@@ -513,7 +513,7 @@ export default defineConfig({
                                         "link": "/ad/movement/dacl/rights-on-rodc-object.md"
                                     },
                                     {
-                                        "text": "BadSuccessor",
+                                        "text": "BadSuccessor (dMSA abuse)",
                                         "link": "/ad/movement/dacl/badsuccessor.md"
                                     }
                                 ]

